@@ -2,7 +2,7 @@
     "name": "gatifulaa/betterregister",
     "description": "Instalador do módulo BetterRegister para Pterodactyl",
     "type": "library",
-    "license": "AGPL 3.0",
+    "license": "AGPL-3.0-only",
     "require": {
         "php": ">=8.2",
         "guzzlehttp/guzzle": "~7.5.0"
@@ -21,3 +21,4 @@
     }
 
 }
+
