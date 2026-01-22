@@ -4,7 +4,7 @@ namespace Gatifulaa\BetterRegister\Commands;
 
 use Illuminate\Console\Command;
 use Symfony\Component\Process\Process;
-use function Laravel\Prompts\{info, error, comment};
+use function Laravel\Prompts\{info, error, comment, select, confirm};
 
 class InstallCommand extends Command
 {
@@ -15,47 +15,82 @@ class InstallCommand extends Command
     {
         $this->info('Iniciando instalação automática do BetterRegister...');
 
-        // URL da sua release específica (BetterRegisterModule.tar.gz)
-        $moduleDownloadUrl = 'https://github.com/Gatifulaa/PterodactylBetterRegister/releases/download/1.1.0/BetterRegisterModule.tar.gz';
+        $moduleDownloadUrl = 'https://github.com';
         $panelRoot = base_path();
+        
+        // --- NOVO BLOCO: Escolha do Usuário do Servidor Web ---
+        $user = 'www-data'; // Valor padrão
+        $group = 'www-data'; // Valor padrão
+
+        if (!$this->option('force')) {
+            $user = select(
+                label: 'Selecione o usuário do seu servidor web (comum: www-data, nginx, ou apache):',
+                options: [
+                    'www-data' => 'www-data',
+                    'nginx' => 'nginx',
+                    'apache' => 'apache',
+                ],
+                default: 'www-data'
+            );
+
+            $confirmGroup = confirm(
+                label: "O grupo é o mesmo que o usuário ({$user})?",
+                default: true,
+            );
+
+            if (!$confirmGroup) {
+                $group = select(
+                    label: 'Selecione o grupo do seu servidor web:',
+                    options: [
+                        'www-data' => 'www-data',
+                        'nginx' => 'nginx',
+                        'apache' => 'apache',
+                    ],
+                    default: 'www-data'
+                );
+            } else {
+                $group = $user;
+            }
+        }
+        // --- FIM NOVO BLOCO ---
+
 
         $this->comment('Baixando e extraindo o módulo principal...');
-
         try {
-            // Baixa o arquivo tar.gz e extrai diretamente para a raiz do painel
-            // Este comando assume que o tar.gz não tem uma pasta raiz extra, ou que você lida com isso na estrutura do arquivo .tar.gz
             $command = "curl -s -L {$moduleDownloadUrl} | tar -xzf - -C {$panelRoot}";
             $process = Process::fromShellCommandline($command);
             $process->setTimeout(120);
             $process->run();
-
             if (!$process->isSuccessful()) {
                 throw new \RuntimeException($process->getErrorOutput());
             }
-
         } catch (\Exception $e) {
-            $this->error('Falha ao baixar ou extrair o módulo. Tente rodar como (sudo su) ou peça ajuda no discord (em breve).');
-            $this->error($e->getMessage());
+            $this->error('Falha ao baixar ou extrair o módulo.');
             return;
         }
 
         $this->comment('Limpando cache do painel...');
         $this->call('view:clear');
         $this->call('cache:clear');
-
-        $this->info('Instalando dependencias locais do Pterodactyl (yarn install)...');
-        $this->runProcess("cd {$panelRoot} && yarn install", 300);
         
-        $this->info('Compilando assets frontend (yarn build:production)...');
-        $this->runProcess("cd {$panelRoot} && export NODE_OPTIONS=--openssl-legacy-provider && yarn build:production", 300);
+        $this->info('Configurando permissões de arquivos...');
+        // --- NOVO BLOCO: Aplica as permissões usando o usuário/grupo escolhido ---
+        try {
+            $this->runProcess("chown -R {$user}:{$group} {$panelRoot}/storage {$panelRoot}/bootstrap/cache");
+            $this->runProcess("chmod -R 755 {$panelRoot}/storage {$panelRoot}/bootstrap/cache");
+        } catch (\RuntimeException $e) {
+            $this->warn('Falha ao definir permissões automáticas. Você precisará fazê-lo manualmente.');
+        }
+        // --- FIM NOVO BLOCO ---
 
-        $this->info('Módulo BetterRegister instalado com sucesso!');
+
+        $this->info('Compilando assets frontend (yarn build:production)...');
+        $this->runProcess("cd {$panelRoot} && yarn install && export NODE_OPTIONS=--openssl-legacy-provider && yarn build:production", 300);
+
+        $this->info('Módulo BetterRegister instalado com sucesso! 🎉');
         return;
     }
 
-    /**
-     * Helper para rodar processos de shell e exibir a saída.
-     */
     protected function runProcess($command, $timeout = 60)
     {
         $process = Process::fromShellCommandline($command);
@@ -69,3 +104,4 @@ class InstallCommand extends Command
         }
     }
 }
+
